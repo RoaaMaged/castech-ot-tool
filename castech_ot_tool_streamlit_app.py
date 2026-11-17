@@ -206,7 +206,7 @@ st.markdown("""
     <div class="castech-header">
         <div>
             <h2 style="margin:0; font-size:22px; font-weight:700;">CASTECH® Castech OT tool</h2>
-            <p style="margin:2px 0 0 0; font-size:12px; color:#94a3b8;">Overtime & Transportation Allowance Calculator (Streamlit Cloud Edition)</p>
+            <p style="margin:2px 0 0 0; font-size:12px; color:#94a3b8;">Overtime & Transportation Allowance Calculator (Streamlit Edition)</p>
         </div>
         <div style="background:#10b981; color:white; padding:6px 14px; border-radius:20px; font-size:11px; font-weight:600;">
             🟢 Cloud Live Sync Active
@@ -214,7 +214,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Navigation Tabs matching exact requirements
+# Navigation Tabs matching HTML version
 tab_calc, tab_workers, tab_holidays, tab_settings = st.tabs([
     "📊 Log & Summary", 
     f"👥 Workers ({len(workers_df)})", 
@@ -357,7 +357,7 @@ with tab_calc:
 
     st.divider()
 
-    # Filters & KPI Header
+    # Filters & KPI Header matching HTML version
     st.markdown("### 📊 Summary Period & Filters")
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
