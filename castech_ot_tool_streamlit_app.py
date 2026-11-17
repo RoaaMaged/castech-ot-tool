@@ -1,29 +1,63 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import json
 from datetime import datetime
 
 # -----------------------------------------------------------------------------
-# PAGE CONFIGURATION & STYLING
+# PAGE CONFIGURATION & CASTECH BRAND STYLING
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Castech OT & Payroll Tool",
+    page_title="Castech OT tool",
     page_icon="⚙️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
     <style>
-    .main { background-color: #f8fafc; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .stButton>button { border-radius: 10px; font-weight: 600; }
+    /* Global Theme & Slate Background */
+    .main { background-color: #f8fafc; color: #0f172a; font-family: 'Inter', sans-serif; }
+    
+    /* Top Header Bar */
+    .castech-header {
+        background-color: #0f172a;
+        color: white;
+        padding: 16px 24px;
+        border-radius: 16px;
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Card Containers */
+    .metric-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        margin-bottom: 16px;
+    }
+    
+    .dark-card {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Buttons & Inputs */
+    .stButton>button { border-radius: 12px; font-weight: 600; padding: 8px 16px; transition: all 0.2s; }
+    div[data-baseweb="select"] > div { border-radius: 12px !important; }
+    input { border-radius: 12px !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# DATABASE INITIALIZATION (SQLite Cloud Storage / Shared File Backend)
+# DATABASE INITIALIZATION (SQLite Shared Cloud Backend)
 # -----------------------------------------------------------------------------
 DB_FILE = "castech_ot_shared.db"
 
@@ -31,7 +65,6 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     
-    # Workers table
     c.execute('''CREATE TABLE IF NOT EXISTS workers (
                 id TEXT PRIMARY KEY,
                 code TEXT,
@@ -41,14 +74,12 @@ def init_db():
                 transport_rate REAL
             )''')
     
-    # Holidays table
     c.execute('''CREATE TABLE IF NOT EXISTS holidays (
                 id TEXT PRIMARY KEY,
                 date TEXT,
                 name TEXT
             )''')
     
-    # Overtime entries table
     c.execute('''CREATE TABLE IF NOT EXISTS entries (
                 id TEXT PRIMARY KEY,
                 worker_id TEXT,
@@ -72,13 +103,11 @@ def init_db():
                 notes TEXT
             )''')
     
-    # Settings table
     c.execute('''CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT
             )''')
     
-    # Insert defaults if empty
     c.execute("SELECT COUNT(*) FROM workers")
     if c.fetchone()[0] == 0:
         default_workers = [
@@ -111,7 +140,7 @@ def init_db():
 init_db()
 
 # -----------------------------------------------------------------------------
-# DATA LOADERS & HELPERS
+# DATA LOADERS & CRUD HELPERS
 # -----------------------------------------------------------------------------
 def load_data():
     conn = sqlite3.connect(DB_FILE)
@@ -179,87 +208,139 @@ currency = settings.get('currency', 'EGP')
 month_hours = int(settings.get('month_hours', 240))
 
 # -----------------------------------------------------------------------------
-# NAVIGATION HEADER
+# TOP NAVIGATION & BRANDING HEADER
 # -----------------------------------------------------------------------------
-st.title("⚙️ Castech OT & Payroll Tool")
-st.caption("Shared Management Dashboard — Any manager opening this app URL sees real-time synced data.")
+st.markdown("""
+    <div class="castech-header">
+        <div>
+            <h2 style="margin:0; font-size:22px; font-weight:700;">CASTECH® Castech OT tool</h2>
+            <p style="margin:2px 0 0 0; font-size:12px; color:#94a3b8;">Overtime & Transportation Allowance Calculator (Shared Cloud Management)</p>
+        </div>
+        <div style="background:#10b981; color:white; padding:6px 14px; border-radius:20px; font-size:11px; font-weight:600;">
+            🟢 Cloud Live Sync Active
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
-tabs = st.tabs(["📊 Calculator & Summary", "👥 Workers Directory", "🗓️ Public Holidays", "⚙️ Rules & Settings"])
+# Navigation Tabs matching the exact UI structure
+tab_calc, tab_workers, tab_holidays, tab_settings = st.tabs([
+    "📊 Log & Summary", 
+    f"👥 Workers ({len(workers_df)})", 
+    f"🗓️ Holidays ({len(holidays_df)})", 
+    "⚙️ Rules & Backup"
+])
 
 # -----------------------------------------------------------------------------
-# TAB 1: CALCULATOR & SUMMARY
+# TAB 1: CALCULATOR, LOGS & FINANCE SUMMARY
 # -----------------------------------------------------------------------------
-with tabs[0]:
-    st.subheader("Log Overtime Shift")
-    
+with tab_calc:
     if workers_df.empty:
-        st.warning("Please add workers in the 'Workers Directory' tab first.")
+        st.warning("⚠️ No workers found. Please add workers in the 'Workers' tab first.")
     else:
-        with st.form("ot_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                worker_options = {row['name'] + f" ({row['code']})": row['id'] for _, row in workers_df.iterrows()}
-                selected_worker_name = st.selectbox("Select Worker *", list(worker_options.keys()))
-                worker_id = worker_options[selected_worker_name]
+        with st.form("ot_entry_form"):
+            st.markdown("### ➕ Log Overtime Entry")
+            st.caption("Select worker, date, and hours. Rates & transport trips auto-adjust for Fri/Sat & Holidays.")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                worker_options = {f"{row['name']} ({row['code']})": row['id'] for _, row in workers_df.iterrows()}
+                selected_w_name = st.selectbox("Worker *", list(worker_options.keys()))
+                worker_id = worker_options[selected_w_name]
                 worker_row = workers_df[workers_df['id'] == worker_id].iloc[0]
-            with col2:
+            with c2:
                 work_date = st.date_input("Work Date *", value=datetime.today())
                 
-            col3, col4, col5 = st.columns(3)
-            with col3:
-                start_time = st.time_input("Start Time", value=datetime.strptime("17:00", "%H:%M").time())
-            with col4:
-                end_time = st.time_input("End Time", value=datetime.strptime("21:00", "%H:%M").time())
-            with col5:
-                transport_mode = st.selectbox("Transportation", ["Auto (1x Wkday / 2x Wkend-Hol)", "Force 1 Trip", "Force 2 Trips", "None (0 Trips)"])
-                
-            notes = st.text_input("Task / Notes (Optional)", placeholder="e.g., Urgent machine repair")
+            st.markdown("##### Shift & Time Method")
+            time_mode = st.radio("Time Entry Method", ["Start & End Time (Auto 6 PM Night Split)", "Direct Manual Hours"], horizontal=True, label_visibility="collapsed")
             
-            submitted = st.form_submit_button("✅ Save Overtime Record", use_container_width=True)
+            if "Start & End" in time_mode:
+                sc1, sc2, sc3 = st.columns(3)
+                start_time = sc1.time_input("Start Time *", value=datetime.strptime("17:00", "%H:%M").time())
+                end_time = sc2.time_input("End Time *", value=datetime.strptime("21:00", "%H:%M").time())
+                time_override = sc3.selectbox("Shift Classification", ["Auto-Split (6 PM Night Cutoff)", "Force Morning OT (1.35x)", "Force Night OT (1.7x)"])
+            else:
+                mc1, mc2 = st.columns(2)
+                manual_hours = mc1.number_input("Total Overtime Hours *", min_value=0.25, max_value=24.0, value=2.0, step=0.25)
+                manual_shift = mc2.selectbox("Shift Period", ["Morning / Day OT (1.35x)", "Night OT (1.7x)"])
+                
+            tc1, tc2 = st.columns(2)
+            with tc1:
+                transport_mode = st.selectbox("Transportation Allowance", [
+                    "Auto (1 Trip Wkday / Roundtrip Wkend & Holiday)", 
+                    "Force 1 Trip (Single)", 
+                    "Force 2 Trips (Roundtrip)", 
+                    "None (0 Trips - Already Claimed Today)"
+                ])
+            with tc2:
+                notes = st.text_input("Task / Notes (Optional)", placeholder="e.g., Inventory audit, urgent shipment...")
+                
+            submitted = st.form_submit_button("✅ Add Overtime Record", use_container_width=True)
             if submitted:
                 date_str = work_date.strftime("%Y-%m-%d")
                 day_name = work_date.strftime("%A")
                 
-                # Classify day
+                # Classify date
                 day_type = "weekday"
                 holiday_name = ""
                 matched_hol = holidays_df[holidays_df['date'] == date_str]
                 if not matched_hol.empty:
                     day_type = "holiday"
                     holiday_name = matched_hol.iloc[0]['name']
-                elif work_date.weekday() >= 5: # Sat=5, Sun=6 in python or 5=Fri, 6=Sat depending on config. Let's check Python weekday: 0=Mon...5=Sat, 6=Sun. Actually in Egypt Weekend is Fri/Sat (4 and 5).
+                elif work_date.weekday() in [4, 5]: # Friday & Saturday in Egypt
                     day_type = "weekend"
-                
-                # Calculate hours
-                start_mins = start_time.hour * 60 + start_time.minute
-                end_mins = end_time.hour * 60 + end_time.minute
-                if end_mins <= start_mins:
-                    end_mins += 24 * 60
-                total_hrs = (end_mins - start_mins) / 60.0
-                
+                    
+                # Compute hours
                 h135, h175, h200, h300 = 0.0, 0.0, 0.0, 0.0
-                if day_type == "holiday":
-                    h300 = total_hrs
-                elif day_type == "weekend" or work_date.weekday() in [4, 5]: # Fri / Sat
-                    day_type = "weekend"
-                    h200 = total_hrs
-                else:
-                    # Split morning / night based on 18:00 cutoff
-                    night_cutoff = 18 * 60
-                    morn_mins, night_mins = 0, 0
-                    for t in range(start_mins, end_mins):
-                        mod = t % 1440
-                        if mod >= 360 and mod < night_cutoff: # 06:00 to 18:00
-                            morn_mins += 1
+                shift_summary = ""
+                
+                if "Start & End" in time_mode:
+                    start_mins = start_time.hour * 60 + start_time.minute
+                    end_mins = end_time.hour * 60 + end_time.minute
+                    if end_mins <= start_mins:
+                        end_mins += 24 * 60
+                    total_hours = (end_mins - start_mins) / 60.0
+                    shift_summary = f"{start_time.strftime('%H:%M')} – {end_time.strftime('%H:%M')}"
+                    
+                    if day_type == "holiday":
+                        h300 = total_hours
+                    elif day_type == "weekend":
+                        h200 = total_hours
+                    else:
+                        if "Morning" in time_override:
+                            h135 = total_hours
+                            shift_summary += " (Morning)"
+                        elif "Night" in time_override:
+                            h175 = total_hours
+                            shift_summary += " (Night)"
                         else:
-                            night_mins += 1
-                    h135 = morn_mins / 60.0
-                    h175 = night_mins / 60.0
-                
+                            night_cutoff = 18 * 60
+                            morn_m, night_m = 0, 0
+                            for t in range(start_mins, end_mins):
+                                mod = t % 1440
+                                if mod >= 360 and mod < night_cutoff:
+                                    morn_m += 1
+                                else:
+                                    night_m += 1
+                            h135 = morn_m / 60.0
+                            h175 = night_m / 60.0
+                else:
+                    total_hours = manual_hours
+                    shift_summary = f"{manual_hours}h"
+                    if day_type == "holiday":
+                        h300 = total_hours
+                    elif day_type == "weekend":
+                        h200 = total_hours
+                    else:
+                        if "Night" in manual_shift:
+                            h175 = total_hours
+                            shift_summary += " (Night)"
+                        else:
+                            h135 = total_hours
+                            shift_summary += " (Morning)"
+
                 hourly_rate = float(worker_row['monthly_net_salary']) / month_hours
-                
-                # Determine trips
                 existing_today = not entries_df[(entries_df['worker_id'] == worker_id) & (entries_df['date'] == date_str)].empty
+                
                 if "Auto" in transport_mode:
                     trips = 0 if existing_today else (2 if day_type in ["holiday", "weekend"] else 1)
                 elif "1 Trip" in transport_mode:
@@ -268,151 +349,204 @@ with tabs[0]:
                     trips = 2
                 else:
                     trips = 0
-                
+                    
                 ot_pay = (h135 * hourly_rate * 1.35) + (h175 * hourly_rate * 1.70) + (h200 * hourly_rate * 2.00) + (h300 * hourly_rate * 3.00)
                 transport_pay = trips * float(worker_row['transport_rate'])
-                total_pay = ot_panel_total = ot_pay + transport_pay
+                total_pay = ot_pay + transport_pay
                 
                 entry_id = f"ot_{datetime.now().strftime('%Y%m%d%H%M%S_%f')}"
-                shift_sum = f"{start_time.strftime('%H:%M')} – {end_time.strftime('%H:%M')}"
-                
                 add_entry_db((
                     entry_id, worker_id, worker_row['name'], worker_row['code'], date_str,
-                    day_name, day_type, holiday_name, shift_sum, h135, h175, h200, h300,
-                    total_hours := h135+h175+h200+h300, hourly_rate, trips, ot_pay, transport_pay, total_pay, notes
+                    day_name, day_type, holiday_name, shift_summary, h135, h175, h200, h300,
+                    total_hours, hourly_rate, trips, ot_pay, transport_pay, total_pay, notes
                 ))
-                st.success(f"Successfully logged {total_hours:.2f}h overtime for {worker_row['name']}!")
+                st.success(f"Added {total_hours:.2f}h overtime for {worker_row['name']}!")
                 st.rerun()
 
     st.divider()
-    
-    # KPIs & Filters
-    st.subheader("Payroll & Attendance Summary")
-    
-    if not entries_df.empty:
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            filter_worker = st.selectbox("Filter by Worker", ["All Workers"] + list(workers_df['name'].unique()))
-        with col_f2:
-            filter_month = st.text_input("Filter by Month (YYYY-MM)", placeholder="e.g. 2026-04")
-            
-        filtered_entries = entries_df.copy()
+
+    # Filters & KPI Header
+    st.markdown("### 📊 Summary Period & Filters")
+    fc1, fc2, fc3, fc4 = st.columns(4)
+    with fc1:
+        filter_worker = st.selectbox("Worker Filter", ["All Workers"] + list(workers_df['name'].unique() if not workers_df.empty else []))
+    with fc2:
+        filter_month = st.text_input("Month Filter (YYYY-MM)", placeholder="e.g. 2026-04")
+    with fc3:
+        filter_from = st.date_input("Date From", value=None)
+    with fc4:
+        filter_to = st.date_input("Date To", value=None)
+        
+    filtered_entries = entries_df.copy()
+    if not filtered_entries.empty:
         if filter_worker != "All Workers":
             filtered_entries = filtered_entries[filtered_entries['worker_name'] == filter_worker]
         if filter_month:
             filtered_entries = filtered_entries[filtered_entries['date'].str.startswith(filter_month)]
+        if filter_from:
+            filtered_entries = filtered_entries[filtered_entries['date'] >= filter_from.strftime("%Y-%m-%d")]
+        if filter_to:
+            filtered_entries = filtered_entries[filtered_entries['date'] <= filter_to.strftime("%Y-%m-%d")]
+
+    # KPI Metric Cards
+    if not filtered_entries.empty:
+        tot_hrs = filtered_entries['total_hours'].sum()
+        tot_ot = filtered_entries['ot_pay'].sum()
+        tot_trans = filtered_entries['transport_pay'].sum()
+        tot_grand = filtered_entries['total_pay'].sum()
+        
+        kc1, kc2, kc3, kc4 = st.columns(4)
+        kc1.metric("Total OT Hours", f"{tot_hrs:.2f} hrs", f"1.35x: {filtered_entries['hours_135'].sum():.1f}h | 1.7x: {filtered_entries['hours_175'].sum():.1f}h")
+        kc2.metric("Total Overtime Pay", f"{currency} {tot_ot:.2f}", f"Across {len(filtered_entries)} entries")
+        kc3.metric("Transport Allowance", f"{currency} {tot_trans:.2f}", f"{filtered_entries['trips'].sum()} total trips")
+        kc4.metric("Grand Total Payout", f"{currency} {tot_grand:.2f}", "Ready for Finance")
+    else:
+        kc1, kc2, kc3, kc4 = st.columns(4)
+        kc1.metric("Total OT Hours", "0.00 hrs")
+        kc2.metric("Total Overtime Pay", f"{currency} 0.00")
+        kc3.metric("Transport Allowance", f"{currency} 0.00")
+        kc4.metric("Grand Total Payout", f"{currency} 0.00")
+
+    st.divider()
+
+    # Worker Payroll Summary Table
+    st.markdown("### 📋 Worker Payroll Summary (Finance Sheet)")
+    if not filtered_entries.empty:
+        summary = filtered_entries.groupby(['worker_code', 'worker_name']).agg(
+            {'hourly_rate': 'first', 'hours_135': 'sum', 'hours_175': 'sum', 'hours_200': 'sum', 'hours_300': 'sum',
+             'ot_pay': 'sum', 'trips': 'sum', 'transport_pay': 'sum', 'total_pay': 'sum'}
+        ).reset_index()
+        
+        summary.columns = ['ID', 'Worker Name', 'Hourly Rate', 'Morn (1.35x)', 'Night (1.7x)', 'Wkend (2x)', 'Hol (3x)', 'OT Pay', 'Trips', 'Transport Pay', 'Total Payout']
+        st.dataframe(summary, use_container_width=True)
+        
+        # CSV Export
+        csv_data = summary.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Worker Summary (CSV)", data=csv_data, file_name="Castech_Worker_Summary.csv", mime="text/csv")
+    else:
+        st.info("No records match the current filter for payroll summary.")
+
+    st.divider()
+
+    # Detailed Overtime Logs Table with Advanced Search & Filters
+    st.markdown("### 📑 Detailed Overtime Log Entries")
+    if not entries_df.empty:
+        dc1, dc2, dc3 = st.columns(3)
+        log_daytype = dc1.selectbox("Day Type Filter", ["All Day Types", "weekday", "weekend", "holiday"])
+        log_search = dc2.text_input("Search Notes / Date", placeholder="Search keyword...")
+        log_sort = dc3.selectbox("Sort Order", ["Date: Oldest First", "Date: Newest First"])
+        
+        log_filtered = filtered_entries.copy()
+        if log_daytype != "All Day Types":
+            log_filtered = log_filtered[log_filtered['day_type'] == log_daytype]
+        if log_search:
+            log_filtered = log_filtered[log_filtered['notes'].str.contains(log_search, case=False, na=False) | log_filtered['date'].str.contains(log_search)]
             
-        if not filtered_entries.empty:
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Total OT Hours", f"{filtered_entries['total_hours'].sum():.2f} hrs")
-            k2.metric("Total OT Pay", f"{currency} {filtered_entries['ot_pay'].sum():.2f}")
-            k3.metric("Transport Allowance", f"{currency} {filtered_entries['transport_pay'].sum():.2f}")
-            k4.metric("Grand Total Payout", f"{currency} {filtered_entries['total_pay'].sum():.2f}")
+        if log_sort == "Date: Newest First":
+            log_filtered = log_filtered.sort_values(by="date", ascending=False)
+        else:
+            log_filtered = log_filtered.sort_values(by="date", ascending=True)
             
-            st.markdown("### Worker Summary Sheet")
-            summary = filtered_entries.groupby(['worker_code', 'worker_name']).agg(
-                {'hours_135': 'sum', 'hours_175': 'sum', 'hours_200': 'sum', 'hours_300': 'sum',
-                 'total_hours': 'sum', 'ot_pay': 'sum', 'trips': 'sum', 'transport_pay': 'sum', 'total_pay': 'sum'}
-            ).reset_index()
-            st.dataframe(summary, use_container_width=True)
-            
-            st.markdown("### Detailed Log Records")
-            st.dataframe(filtered_entries[['date', 'worker_name', 'day_type', 'shift_summary', 'total_hours', 'ot_pay', 'transport_pay', 'total_pay', 'notes']], use_container_width=True)
-            
-            if st.button("🗑️ Clear All Logged Entries"):
+        st.dataframe(log_filtered[['date', 'day_name', 'worker_name', 'day_type', 'shift_summary', 'total_hours', 'ot_pay', 'trips', 'transport_pay', 'total_pay', 'notes']], use_container_width=True)
+        
+        if st.button("🗑️ Clear Filtered Log Entries"):
+            if not log_filtered.empty:
+                ids_to_del = log_filtered['id'].tolist()
                 conn = sqlite3.connect(DB_FILE)
-                conn.cursor().execute("DELETE FROM entries")
+                c = conn.cursor()
+                for eid in ids_to_del:
+                    c.execute("DELETE FROM entries WHERE id = ?", (eid,))
                 conn.commit()
                 conn.close()
+                st.success("Deleted selected log entries.")
                 st.rerun()
-        else:
-            st.info("No records found matching the filter.")
     else:
-        st.info("No overtime entries logged yet.")
+        st.info("No detailed log entries found.")
 
 # -----------------------------------------------------------------------------
-# TAB 2: WORKERS DIRECTORY
+# TAB 2: WORKERS & MONTHLY NET SALARY MANAGEMENT
 # -----------------------------------------------------------------------------
-with tabs[1]:
-    st.subheader("Manage Workers & Monthly Salaries")
+with tab_workers:
+    st.markdown("### 👥 Manage Workers & Monthly Net Salary Rates")
     
-    with st.form("worker_form"):
-        c1, c2, c3 = st.columns(3)
-        w_name = c1.text_input("Full Name *")
-        w_code = c2.text_input("Employee ID", value=f"EMP-00{len(workers_df)+1}")
-        w_role = c3.text_input("Role / Department", value="Technician")
+    with st.form("worker_add_form"):
+        rc1, rc2, rc3 = st.columns(3)
+        w_name = rc1.text_input("Full Name *")
+        w_code = rc2.text_input("Employee ID", value=f"EMP-00{len(workers_df)+1}")
+        w_role = rc3.text_input("Department / Role", value="Technician")
         
-        c4, c5 = st.columns(2)
-        w_monthly = c4.number_input("Monthly Net Salary (EGP) *", min_value=100.0, value=8500.0, step=100.0)
-        w_transport = c5.number_input("1-Trip Transport Allowance (EGP) *", min_value=0.0, value=35.0, step=5.0)
+        rc4, rc5 = st.columns(2)
+        w_monthly = rc4.number_input("Monthly Net Salary (EGP) *", min_value=1.0, value=8500.0, step=100.0)
+        w_transport = rc5.number_input("1-Trip Transport Allowance (EGP) *", min_value=0.0, value=35.0, step=5.0)
         
-        st.caption(f"Derived Hourly Rate: **{currency} {(w_monthly / month_hours):.2f} / hr** (Based on {month_hours}h monthly divisor)")
+        st.caption(f"Derived Hourly Rate: **{currency} {(w_monthly / month_hours):.4f} / hr** (Divided by {month_hours}h monthly divisor)")
         
-        if st.form_submit_button("💾 Save Worker"):
+        if st.form_submit_button("💾 Save Worker Profile"):
             if w_name:
-                w_id = f"w_{datetime.now().strftime('%H%M%S')}"
+                w_id = f"w_{datetime.now().strftime('%H%M%S_%f')}"
                 save_worker_db(w_id, w_code, w_name, w_role, w_monthly, w_transport)
-                st.success(f"Added worker {w_name} successfully!")
+                st.success(f"Successfully added worker {w_name}!")
                 st.rerun()
             else:
-                st.error("Worker name is required.")
+                st.error("Please enter a worker name.")
                 
-    st.markdown("### Registered Workers")
+    st.markdown("### Saved Workers Directory")
     if not workers_df.empty:
         for _, row in workers_df.iterrows():
-            col_a, col_b = st.columns([4, 1])
             hourly = row['monthly_net_salary'] / month_hours
-            col_a.write(f"**{row['name']}** ({row['code']}) — {row['role']} | Salary: {currency} {row['monthly_net_salary']} | Hourly: {currency} {hourly:.2f}/hr | Transport: {currency} {row['transport_rate']}")
-            if col_b.button("Delete", key=f"del_w_{row['id']}"):
+            col1, col2 = st.columns([5, 1])
+            col1.write(f"**{row['name']}** ({row['code']}) — {row['role']} | Monthly: {currency} {row['monthly_net_salary']} | Hourly: **{currency} {hourly:.2f}/hr** | Transport: {currency} {row['transport_rate']}")
+            if col2.button("Delete", key=f"del_w_{row['id']}"):
                 delete_worker_db(row['id'])
                 st.rerun()
 
 # -----------------------------------------------------------------------------
-# TAB 3: PUBLIC HOLIDAYS
+# TAB 3: PUBLIC HOLIDAYS (3.0x RATE + ROUNDTRIP TRANSPORT)
 # -----------------------------------------------------------------------------
-with tabs[2]:
-    st.subheader("Public Holidays (3.0x Rate + Roundtrip Transport)")
+with tab_holidays:
+    st.markdown("### 🗓️ Register Public Holidays (3.0x Rate)")
+    st.caption("Overtime logged on registered public holidays automatically applies 3.0x hourly rate and 2 transport trips.")
     
-    with st.form("holiday_form"):
-        h_name = st.text_input("Holiday Name *", placeholder="e.g., Eid Al-Adha Day 1")
+    with st.form("holiday_add_form"):
+        h_name = st.text_input("Holiday Name *", placeholder="e.g., Eid Al-Fitr Day 1")
         h_date = st.date_input("Holiday Date *")
-        if st.form_submit_button("➕ Register Holiday"):
+        if st.form_submit_button("➕ Register Holiday (3x Rate)"):
             if h_name:
-                h_id = f"h_{datetime.now().strftime('%H%M%S')}"
+                h_id = f"h_{datetime.now().strftime('%H%M%S_%f')}"
                 save_holiday_db(h_id, h_date.strftime("%Y-%m-%d"), h_name)
                 st.success(f"Registered holiday: {h_name}!")
                 st.rerun()
                 
-    st.markdown("### Upcoming / Registered Holidays")
+    st.markdown("### Registered Public Holidays")
     if not holidays_df.empty:
         for _, row in holidays_df.iterrows():
-            c1, c2 = st.columns([4, 1])
+            c1, c2 = st.columns([5, 1])
             c1.write(f"📅 **{row['date']}** — {row['name']} *(3.0x OT Rate)*")
             if c2.button("Remove", key=f"del_h_{row['id']}"):
                 delete_holiday_db(row['id'])
                 st.rerun()
 
 # -----------------------------------------------------------------------------
-# TAB 4: RULES & SETTINGS
+# TAB 4: RULES, SHIFT CUTOFFS & CLOUD SHARING INSTRUCTIONS
 # -----------------------------------------------------------------------------
-with tabs[3]:
-    st.subheader("Calculation Rules & Currency")
+with tab_settings:
+    st.markdown("### ⚙️ Shift Cutoffs & Calculation Rules")
     
-    with st.form("settings_form"):
-        set_curr = st.text_input("Currency Symbol / Code", value=currency)
-        set_m_hrs = st.number_input("Monthly Working Hours Divisor", value=month_hours, min_value=100, max_value=744)
+    with st.form("settings_save_form"):
+        sc1, sc2 = st.columns(2)
+        set_curr = sc1.text_input("Currency Symbol / Code", value=currency)
+        set_m_hrs = sc2.number_input("Monthly Working Hours Divisor", value=month_hours, min_value=1, max_value=744)
         
         if st.form_submit_button("Save Settings"):
             update_setting_db("currency", set_curr)
             update_setting_db("month_hours", set_m_hrs)
-            st.success("Settings saved successfully!")
+            st.success("Settings updated successfully!")
             st.rerun()
             
     st.divider()
-    st.markdown("### 🌐 How to Share with Managers")
-    st.info("""
-    To give your managers access where everyone sees the exact same data instantly:
-    1. Host this Streamlit app for free on **Streamlit Community Cloud** (`share.streamlit.io`) by connecting your GitHub repository.
-    2. Share the generated app URL with your managers. 
-    3. Because all data is stored in the shared SQLite database (`castech_ot_shared.db`), any entry you add on your phone or PC will be instantly visible to all managers when they refresh their browser!
+    st.markdown("### 🌐 How Managers See All Data Instantly")
+    st.success("""
+    **Collaboration & Real-Time Syncing:**
+    - Because this app is powered by a shared SQLite database (`castech_ot_shared.db`), **anyone who opens the app URL will see the exact same data instantly**!
+    - To share this online with your managers, you can deploy this `app.py` file for free on **Streamlit Community Cloud** (`share.streamlit.io`) by connecting a free GitHub repository. Once hosted, send the link to your managers—whenever you log an overtime shift, they will see it update in real time when refreshing their browser!
     """)
