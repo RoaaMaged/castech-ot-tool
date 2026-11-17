@@ -41,14 +41,6 @@ st.markdown("""
         margin-bottom: 16px;
     }
     
-    .dark-card {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-
     /* Buttons & Inputs */
     .stButton>button { border-radius: 12px; font-weight: 600; padding: 8px 16px; transition: all 0.2s; }
     div[data-baseweb="select"] > div { border-radius: 12px !important; }
@@ -214,7 +206,7 @@ st.markdown("""
     <div class="castech-header">
         <div>
             <h2 style="margin:0; font-size:22px; font-weight:700;">CASTECH® Castech OT tool</h2>
-            <p style="margin:2px 0 0 0; font-size:12px; color:#94a3b8;">Overtime & Transportation Allowance Calculator (Shared Cloud Management)</p>
+            <p style="margin:2px 0 0 0; font-size:12px; color:#94a3b8;">Overtime & Transportation Allowance Calculator (Streamlit Cloud Edition)</p>
         </div>
         <div style="background:#10b981; color:white; padding:6px 14px; border-radius:20px; font-size:11px; font-weight:600;">
             🟢 Cloud Live Sync Active
@@ -222,7 +214,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Navigation Tabs matching the exact UI structure
+# Navigation Tabs matching exact requirements
 tab_calc, tab_workers, tab_holidays, tab_settings = st.tabs([
     "📊 Log & Summary", 
     f"👥 Workers ({len(workers_df)})", 
